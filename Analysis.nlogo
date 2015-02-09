@@ -1,8 +1,15 @@
-extensions [ table csv ]
+extensions [ table csv xw ]
 
 globals [
   header
   full-data
+  xw-ycor-reporter
+  xw-xcor-reporter
+  xw-color-reporter
+  xw-size-reporter
+  xw-label-reporter
+  xw-shape-reporter
+  xw-current-offset
 ]
 
 breed [ points point ]
@@ -12,6 +19,15 @@ points-own [
   group-id
 ]
 
+to startup
+  xw:clear-all
+  xw:create-tab "data" [
+    xw:set-title "Data"
+  ]
+end
+
+; Change colors to use gradient or discrete (checkbox between them)
+; Shape applied to discretized values
 to setup
   ca
   set-default-shape points "circle"
@@ -27,16 +43,150 @@ to setup
     foreach header [
       output-print ?
     ]
-    set xcor-reporter (word "\"" first header "\"")
-    set ycor-reporter (word "\"" last header "\"")
-    set color-reporter "who"
     set size-reporter "1"
     set label-reporter "\"\""
     set group-by ""
     
     regroup
   ]
+  startup
+  setup-xw
   display
+end
+
+to setup-xw
+  xw:create-button "update-reporters" [
+    xw:set-label "Commit"
+    xw:set-commands "update-xw-reporters"
+  ]
+  create-choosers [xw:x + xw:width] xw:of "update-reporters"
+  set xw-current-offset 30
+  foreach header [
+    create-data-manipulation-row ?1 xw-current-offset
+    set xw-current-offset xw-current-offset + 30
+  ]
+end
+
+to create-choosers [x-offset]
+  let current-x-offset x-offset
+  foreach [["xcor" "X"] ["ycor" "Y"] ["color" "Color"] ["size" "Size"] ["label" "Label"] ["shape" "Shape"]] [
+    let key (first ?)
+    let lbl (last ?)
+    xw:create-chooser key [
+      xw:set-label lbl
+      xw:set-x current-x-offset + 10
+      xw:set-items (fput "default" header)
+    ]
+    set current-x-offset [xw:x + xw:width] xw:of key
+  ]
+end
+  
+
+to create-data-manipulation-row [name offset]
+  xw:create-note (word "label " name) [
+    xw:set-y offset
+    xw:set-height 30
+    xw:set-text name
+  ]
+  xw:create-chooser (word "chooser " name) [
+    xw:set-x [xw:x + xw:width + 10] xw:of (word "label " name)
+    xw:set-y offset
+    xw:set-height 30
+    xw:set-items ["string" "number" "date" "boolean"]
+    xw:set-selected-item "string"
+  ]
+  xw:create-checkbox (word "enumerate " name) [
+    xw:set-x [xw:x + xw:width + 10] xw:of (word "chooser " name)
+    xw:set-y offset
+    xw:set-height 30
+    xw:set-label "Enumerate Like"
+  ]
+end
+
+to update-xw-reporters
+  set xw-xcor-reporter updated-reporter "xcor" "1"
+  set xw-ycor-reporter updated-reporter "ycor" "1"
+  set xw-color-reporter updated-reporter "color" "who"
+  set xw-size-reporter updated-reporter "size" "1"
+  set xw-label-reporter updated-reporter "label" "\"\"" 
+  set xw-shape-reporter updated-reporter "shape" "\"circle\""
+end
+
+to-report updated-reporter [selected-axis default-reporter]
+  let selection [xw:selected-item] xw:of selected-axis
+  ifelse selection != "default" [
+    ifelse [xw:selected-item] xw:of (word "chooser " selection) = "number" [
+      xw:ask (word "enumerate " selection) [
+        xw:set-enabled? false 
+        xw:set-selected? false
+      ]
+      report (word "read-from-string (get \"" selection "\")")
+    ] [
+    ifelse [xw:selected?] xw:of (word "enumerate " selection) [
+      open-enumerate-row selected-axis selection
+      report (task [xw:get (word "enumerate value " selection " " (get selection))]) 
+    ] [
+      report (word "\"" selection "\"")
+    ]]
+  ] [
+  report default-reporter
+  ]
+end
+
+to open-enumerate-row [selected-axis selection]
+  let distinct-values remove-duplicates [get selection] of points
+  let choices display-values selected-axis
+  ifelse length choices = 2 and is-number? first choices and is-number? last choices [
+    let min-choice first choices
+    let max-choice last choices
+    let x-offset 0
+    if not member? (word "enumerate value " selection " " (first distinct-values)) xw:widgets [
+      foreach distinct-values [
+        xw:create-slider (word "enumerate value " selection " " ?) [
+          xw:set-x x-offset
+          xw:set-y xw-current-offset + 10
+          xw:set-label ?
+          xw:set-minimum min-choice
+          xw:set-maximum max-choice
+          xw:set-value min-choice + max-choice / 2
+        ]
+        set x-offset x-offset + [xw:width + 10] xw:of (word "enumerate value " selection " " ?) 
+      ]
+      set xw-current-offset xw-current-offset + 50
+    ]
+  ] [
+  let x-offset 0
+  if not member? (word "enumerate value " selection " " (first distinct-values)) xw:widgets [
+    foreach distinct-values [
+      xw:create-chooser (word "enumerate value " selection " " ?) [
+        xw:set-x x-offset
+        xw:set-y xw-current-offset + 10
+        xw:set-label ?
+        xw:set-items choices
+        xw:set-selected-item first choices
+      ]
+      set x-offset x-offset + [xw:width + 10] xw:of (word "enumerate value " selection " " ?)
+    ]
+    set xw-current-offset xw-current-offset + 50
+  ]
+  ]
+end
+
+to-report display-values [selected-axis]
+  if selected-axis = "size" [
+    report [0 30]
+  ]
+  if selected-axis = "shape" [
+    report [
+      "circle" "default" "airplane" "arrow" "box" "bug" "butterfly" "car"
+      "circle 2" "cow" "cylinder" "dot" "face happy" "face neutral"
+      "face sad" "fish" "flag" "flower" "house" "leaf" "line"
+      "line half" "pentagon" "person" "plant" "sheep" "square" "square 2"
+      "star" "target" "tree" "triangle" "triangle 2" "truck" "turtle"
+      "wheel" "x"
+    ]
+  ]
+  report [0 100]
 end
 
 to regroup
@@ -74,11 +224,12 @@ to regroup
 end
 
 to go
-  let rate 0.3
-  interpolate-to-normed-value (task [ xcor ]) (task [ set xcor ? ]) xcor-reporter min-pxcor max-pxcor rate
-  interpolate-to-normed-value (task [ ycor ]) (task [ set ycor ? ]) ycor-reporter min-pycor max-pycor rate
-  interpolate-to-normed-value (task [ first color ]) (task [ set color (list ? 0 (255 - ?)) ]) color-reporter 0 255 rate
-  interpolate-to-normed-value (task [ size ]) (task [ set size ? ]) size-reporter (0.5 * size-scale) (2 * size-scale) rate
+  let rate 1
+  interpolate-to-normed-value (task [ xcor ]) (task [ set xcor ? ]) xw-xcor-reporter min-pxcor max-pxcor 0.3
+  interpolate-to-normed-value (task [ ycor ]) (task [ set ycor ? ]) xw-ycor-reporter min-pycor max-pycor 0.3
+  interpolate-to-normed-value (task [ first extract-hsb color ]) (task [ set color hsb ? 125 125 ]) xw-color-reporter 0 255 0.5
+  interpolate-to-normed-value (task [ size ]) (task [ set size ? ]) xw-size-reporter (0.5 * size-scale) (2 * size-scale) 0.3
+  set-value (task [ shape ]) (task [set shape ?]) xw-shape-reporter
   ask turtles [
     set label runresult label-reporter
   ]
@@ -89,6 +240,19 @@ to go
     ])
   ]
   display
+end
+
+to set-value [getter setter reporter]
+  if is-string? reporter [ set reporter compile reporter ]
+  let vals [runresult reporter ] of points
+  if empty? vals [ set vals [0] ]
+  ask points [
+    let target-val (runresult reporter)
+    let cur-val runresult getter
+    if cur-val != target-val [
+      (run setter target-val)
+    ]
+  ]
 end
 
 to interpolate-to-normed-value [ getter setter reporter target-min target-max rate ]
@@ -157,7 +321,7 @@ to-report read-csv [ path skip-lines ]
   while [ not file-at-end? ] [
     let line file-read-line
     if length line > 0 [
-      set results lput (map read-from-string csv:csv-row-to-strings line) results
+      set results lput csv:csv-row-to-strings line results
     ]
   ]
   file-close
@@ -205,29 +369,29 @@ to-report to-hsb [ rgb-color ]
 end
 
 to-report min-x
-  report min [ to-num runresult xcor-reporter ] of points
+  report min [ to-num runresult (compile xw-xcor-reporter) ] of points
 end
 
 to-report max-x
-  report max [ to-num runresult xcor-reporter ] of points
+  report max [ to-num runresult (compile xw-xcor-reporter) ] of points
 end
 
 to-report min-y
-  report min [ to-num runresult ycor-reporter ] of points
+  report min [ to-num runresult (compile xw-ycor-reporter) ] of points
 end
 
 to-report max-y
-  report max [ to-num runresult ycor-reporter ] of points
+  report max [ to-num runresult (compile xw-ycor-reporter) ] of points
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-610
+645
 10
-1117
-538
+1649
+1035
 -1
 -1
-55.55555555555556
+0.5030181086519114
 1
 10
 1
@@ -238,9 +402,9 @@ GRAPHICS-WINDOW
 0
 1
 0
-8
+993
 0
-8
+993
 1
 1
 1
@@ -270,7 +434,7 @@ INPUTBOX
 110
 65
 header-line
-6
+0
 1
 0
 Number
@@ -284,11 +448,11 @@ OUTPUT
 
 INPUTBOX
 610
-595
+610
 1120
-655
+670
 xcor-reporter
-\"[step]\"
+read-from-string (get \"Longitude\")
 1
 0
 String (reporter)
@@ -299,7 +463,7 @@ INPUTBOX
 527
 265
 ycor-reporter
-\"percent-burned\"
+read-from-string (get \"Latitude\")
 1
 0
 String (reporter)
@@ -391,7 +555,7 @@ size-scale
 size-scale
 0
 10
-1
+5
 .1
 1
 NIL
@@ -420,10 +584,10 @@ min-y
 11
 
 MONITOR
-610
-540
-685
+580
 585
+655
+630
 NIL
 min-x
 3
@@ -432,9 +596,9 @@ min-x
 
 MONITOR
 1040
-540
+580
 1120
-585
+625
 NIL
 max-x
 3
@@ -447,7 +611,7 @@ INPUTBOX
 525
 70
 filter-by
-NIL
+true
 1
 0
 String (reporter)
