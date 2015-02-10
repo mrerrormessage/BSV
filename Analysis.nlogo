@@ -1,4 +1,4 @@
-extensions [ table csv xw ]
+extensions [ csv xw ]
 
 globals [
   header
@@ -38,8 +38,6 @@ to setup
     set full-data but-first data-table
     let num-points length full-data
     let max-cor num-points - 1
-    resize-world 0 max-cor 0 max-cor
-    set-patch-size 500 / (max-cor + 1)
     foreach header [
       output-print ?
     ]
@@ -49,8 +47,9 @@ to setup
     
     regroup
   ]
-  startup
+  foreach (remove "data" xw:widgets) xw:remove
   setup-xw
+  update-xw-reporters
   display
 end
 
@@ -62,9 +61,10 @@ to setup-xw
   create-choosers [xw:x + xw:width] xw:of "update-reporters"
   set xw-current-offset 30
   foreach header [
-    create-data-manipulation-row ?1 xw-current-offset
     set xw-current-offset xw-current-offset + 30
+    create-data-manipulation-row ?1 xw-current-offset
   ]
+  set xw-current-offset xw-current-offset + 30
 end
 
 to create-choosers [x-offset]
@@ -99,17 +99,17 @@ to create-data-manipulation-row [name offset]
     xw:set-x [xw:x + xw:width + 10] xw:of (word "chooser " name)
     xw:set-y offset
     xw:set-height 30
-    xw:set-label "Enumerate Like"
+    xw:set-label "Discrete Values"
   ]
 end
 
 to update-xw-reporters
-  set xw-xcor-reporter updated-reporter "xcor" "1"
-  set xw-ycor-reporter updated-reporter "ycor" "1"
-  set xw-color-reporter updated-reporter "color" "who"
-  set xw-size-reporter updated-reporter "size" "1"
-  set xw-label-reporter updated-reporter "label" "\"\"" 
-  set xw-shape-reporter updated-reporter "shape" "\"circle\""
+  set xw-xcor-reporter updated-reporter "xcor" (task [1])
+  set xw-ycor-reporter updated-reporter "ycor" (task [1])
+  set xw-color-reporter updated-reporter "color" (task [who])
+  set xw-size-reporter updated-reporter "size" (task [1])
+  set xw-label-reporter updated-reporter "label" (task [""])
+  set xw-shape-reporter updated-reporter "shape" (task ["circle"])
 end
 
 to-report updated-reporter [selected-axis default-reporter]
@@ -120,13 +120,13 @@ to-report updated-reporter [selected-axis default-reporter]
         xw:set-enabled? false 
         xw:set-selected? false
       ]
-      report (word "read-from-string (get \"" selection "\")")
+      report (task [read-from-string get selection])
     ] [
     ifelse [xw:selected?] xw:of (word "enumerate " selection) [
       open-enumerate-row selected-axis selection
       report (task [xw:get (word "enumerate value " selection " " (get selection))]) 
     ] [
-      report (word "\"" selection "\"")
+      report (task [get selection])
     ]]
   ] [
   report default-reporter
@@ -231,7 +231,7 @@ to go
   interpolate-to-normed-value (task [ size ]) (task [ set size ? ]) xw-size-reporter (0.5 * size-scale) (2 * size-scale) 0.3
   set-value (task [ shape ]) (task [set shape ?]) xw-shape-reporter
   ask turtles [
-    set label runresult label-reporter
+    set label runresult xw-label-reporter
   ]
   if mouse-inside? and mouse-down? [
     print ""
@@ -387,11 +387,11 @@ end
 GRAPHICS-WINDOW
 645
 10
-1649
-1035
+1156
+542
 -1
 -1
-0.5030181086519114
+1.0
 1
 10
 1
@@ -402,9 +402,9 @@ GRAPHICS-WINDOW
 0
 1
 0
-993
+500
 0
-993
+500
 1
 1
 1
@@ -444,7 +444,7 @@ OUTPUT
 127
 197
 507
-10
+14
 
 INPUTBOX
 610
@@ -555,7 +555,7 @@ size-scale
 size-scale
 0
 10
-5
+6.1
 .1
 1
 NIL
